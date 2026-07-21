@@ -1,5 +1,5 @@
 #include "FixedSizePoolAllocator.hpp"
-#include <iostream> // This is to use std::cerr for error logging.
+#include <iostream> // This is to use std::clog for error logging.
 
 namespace MemoryAllocator 
 {    
@@ -7,14 +7,14 @@ namespace MemoryAllocator
     namespace 
     {
         // size_t max to avoid including <algorithm>
-        const size_t max(const size_t& a, const size_t& b) { return (a < b) ? b : a; }
+        const constexpr size_t max(const size_t& a, const size_t& b) { return (a < b) ? b : a; }
     }
 
     FixedSizePoolAllocator::FixedSizePoolAllocator(std::size_t blockSize, std::size_t blockCount)
     {
         if (blockCount == 0 || blockSize == 0) 
         {
-            std::cerr << "FSPA: Initialization of fixed size memory pool failed! BlockCount and blockSize cannot be zero." << std::endl;
+            std::clog << "FSPA: Initialization of fixed size memory pool failed! BlockCount and blockSize cannot be zero.\n";
             return;
         }
 
@@ -24,7 +24,7 @@ namespace MemoryAllocator
 
         if (m_memory == nullptr) 
         {
-            std::cerr << "FSPA: Initialization of fixed size memory pool failed!" << std::endl;
+            std::clog << "FSPA: Initialization of fixed size memory pool failed!\n";
             return;
         }
 
@@ -50,7 +50,7 @@ namespace MemoryAllocator
     {
         if (m_memory == nullptr) 
         {
-            std::cerr << "FSPA: Fixed size memory pool is not initalized! Returning null. " << std::endl;
+            std::clog << "FSPA: Fixed size memory pool is not initalized! Returning null.\n";
             return nullptr;
         }
 
@@ -64,13 +64,13 @@ namespace MemoryAllocator
     {
         if (m_memory == nullptr)
         {
-            std::cerr << "FSPA: Fixed size memory pool is not initalized! Returning. " << std::endl;
+            std::clog << "FSPA: Fixed size memory pool is not initalized! Returning.\n";
             return;
         }
 
         if (block == nullptr)
         {
-            std::cerr << "FSPA: Cannot deallocate a nullptr" << std::endl;
+            std::clog << "FSPA: Cannot deallocate a nullptr.\n";
             return;
         }
 
