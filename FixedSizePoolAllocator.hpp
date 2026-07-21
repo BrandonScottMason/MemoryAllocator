@@ -42,12 +42,12 @@ namespace MemoryAllocator {
         /// Allocates a single block
         /// </summary>
         /// <returns>The allocated block</returns>
-        void* allocate();
+        void* allocateBlock();
 
         /// <summary>
         /// Deallocates a single block
         /// </summary>
-        void deallocate(void* block);
+        void deallocateBlock(void* block);
     };
 }   
 

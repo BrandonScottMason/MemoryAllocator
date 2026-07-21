@@ -12,16 +12,36 @@ namespace MemoryAllocator
         try
         {
             std::cout << "Starting FixedSizePoolAllocator unit tests..." << std::endl;
-            std::cout << "Allocating as many blocks as we passed into the constructor..." << std::endl;
+            std::cout << "Allocating zero..." << std::endl;
+            FixedSizePoolAllocator badAllocator(0, 0);
+            if (badAllocator.allocateBlock() != nullptr)
+            {
+                std::cerr << "Unit Test FAILED: badAllocator.allocateBlock() did not return a nullptr as expected!" << std::endl;
+            }
 
             size_t blockSize = 100000;
             size_t blockCount = 10000;
             std::vector<std::byte*> blocks;
             FixedSizePoolAllocator allocator(blockSize, blockCount);
 
+            std::cout << "Deallocating a null ptr..." << std::endl;
+            allocator.deallocateBlock(nullptr);
+
+            std::cout << "Immediately reusing an allocation..." << std::endl;
+            std::byte* testBlock = reinterpret_cast<std::byte*>(allocator.allocateBlock());
+            std::uintptr_t ptr = reinterpret_cast<std::uintptr_t>(testBlock);
+            allocator.deallocateBlock(testBlock);
+            testBlock = reinterpret_cast<std::byte*>(allocator.allocateBlock());
+            if (ptr != reinterpret_cast<std::uintptr_t>(testBlock))
+            {
+                std::cerr << "Unit Test FAILED: Same memory address expected." << std::endl;
+            }
+            allocator.deallocateBlock(testBlock);
+
+            std::cout << "Allocating as many blocks as we passed into the constructor..." << std::endl;
             for (int i = 0; i < blockCount; ++i)
             {
-                blocks.push_back(reinterpret_cast<std::byte*>(allocator.allocate()));
+                blocks.emplace_back(reinterpret_cast<std::byte*>(allocator.allocateBlock()));
             }
 
             std::cout << "Deallocating that many blocks now..." << std::endl;
@@ -30,7 +50,7 @@ namespace MemoryAllocator
             {
                 std::byte* first_element = std::move(blocks.front());
                 blocks.erase(blocks.begin());
-                allocator.deallocate(first_element);
+                allocator.deallocateBlock(first_element);
             }
 
             std::cout << "FixedSizePooolAllocator unit tests passed!" << std::endl;

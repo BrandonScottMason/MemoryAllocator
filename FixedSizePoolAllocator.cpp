@@ -46,7 +46,7 @@ namespace MemoryAllocator
         currentNode->next = nullptr;
     }
 
-    void* FixedSizePoolAllocator::allocate()
+    void* FixedSizePoolAllocator::allocateBlock()
     {
         if (m_memory == nullptr) 
         {
@@ -60,8 +60,14 @@ namespace MemoryAllocator
         return availableBlock;
     }
 
-    void FixedSizePoolAllocator::deallocate(void* block)
+    void FixedSizePoolAllocator::deallocateBlock(void* block)
     {
+        if (m_memory == nullptr)
+        {
+            std::cerr << "FSPA: Fixed size memory pool is not initalized! Returning. " << std::endl;
+            return;
+        }
+
         if (block == nullptr)
         {
             std::cerr << "FSPA: Cannot deallocate a nullptr" << std::endl;
