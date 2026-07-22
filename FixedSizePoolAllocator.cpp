@@ -54,29 +54,24 @@ namespace MemoryAllocator
             return nullptr;
         }
 
+        if (!m_freeListHead) return nullptr;
         FreeListNode* availableBlock = m_freeListHead;
         m_freeListHead = m_freeListHead->next;
 
         return availableBlock;
     }
 
-    void FixedSizePoolAllocator::deallocateBlock(void* block)
+    bool FixedSizePoolAllocator::deallocateBlock(void* block)
     {
-        if (m_memory == nullptr)
+        if (m_memory == nullptr || block == nullptr)
         {
-            std::clog << "FSPA: Fixed size memory pool is not initalized! Returning.\n";
-            return;
-        }
-
-        if (block == nullptr)
-        {
-            std::clog << "FSPA: Cannot deallocate a nullptr.\n";
-            return;
+            return false;
         }
 
         // Push the freed (but not deleted) block to the top of the free list
         FreeListNode* freedBlock = static_cast<FreeListNode*>(block);
         freedBlock->next = m_freeListHead;
         m_freeListHead = freedBlock;
+        return true;
     }
 }

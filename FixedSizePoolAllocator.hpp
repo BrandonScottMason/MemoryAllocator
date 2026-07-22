@@ -22,7 +22,10 @@ namespace MemoryAllocator {
         std::size_t m_blockSize = 0;
         std::size_t m_memorySize = 0;
 
-        // Helper method to set the head and all of the next nodes.
+        /// <summary>
+        /// Helper method to set the head and all of the next nodes.
+        /// </summary>
+        /// <param name="blockCount">How many blocks there are to link.</param>
         void LinkBlocks(std::size_t blockCount);
     public:
         // Delete assignment operators to avoid doubling buffers
@@ -32,7 +35,7 @@ namespace MemoryAllocator {
         /// <summary>
         /// The one and only constructor for this allocator
         /// </summary>
-        /// <param name="blockSize">The size of each block (in bytes)</param>
+        /// <param name="blockSize">The size of each block in bytes.</param>
         /// <param name="blockCount">How many blocks we want to allocate.</param>
         explicit FixedSizePoolAllocator(std::size_t blockSize, std::size_t blockCount);
 
@@ -47,7 +50,8 @@ namespace MemoryAllocator {
         /// <summary>
         /// Deallocates a single block
         /// </summary>
-        void deallocateBlock(void* block);
+        /// <returns>Success or failure</returns>
+        bool deallocateBlock(void* block);
     };
 }   
 
