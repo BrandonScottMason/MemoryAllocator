@@ -46,7 +46,7 @@ namespace MemoryAllocator
         currentNode->next = nullptr;
     }
 
-    void* FixedSizePoolAllocator::allocateBlock()
+    void* FixedSizePoolAllocator::allocateBlock(bool threaded)
     {
         if (m_memory == nullptr) 
         {
@@ -54,14 +54,26 @@ namespace MemoryAllocator
             return nullptr;
         }
 
-        if (!m_freeListHead) return nullptr;
+        if (!m_freeListHead && !threaded)
+        {
+            return nullptr;
+        }
+        else if (threaded) 
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cv.wait(lock, [this] {return m_freeListHead; });
+        }
+
         FreeListNode* availableBlock = m_freeListHead;
         m_freeListHead = m_freeListHead->next;
-
+        if (threaded) 
+        { 
+            m_cv.notify_one(); 
+        }
         return availableBlock;
     }
 
-    bool FixedSizePoolAllocator::deallocateBlock(void* block)
+    bool FixedSizePoolAllocator::deallocateBlock(void* block, bool threaded)
     {
         if (m_memory == nullptr || block == nullptr)
         {
@@ -70,8 +82,19 @@ namespace MemoryAllocator
 
         // Push the freed (but not deleted) block to the top of the free list
         FreeListNode* freedBlock = static_cast<FreeListNode*>(block);
+
+        if (threaded)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+        }
+
         freedBlock->next = m_freeListHead;
         m_freeListHead = freedBlock;
+        
+        if (threaded)
+        {
+            m_cv.notify_one();
+        }
         return true;
     }
 }
