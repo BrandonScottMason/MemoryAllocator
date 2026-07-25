@@ -1,6 +1,5 @@
 // MemoryAllocator.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-#include <future>
 #include <iostream>
 #include <queue>
 #include <stdexcept>
@@ -33,30 +32,36 @@ namespace MemoryAllocator
         std::queue<std::byte*> m_blocks;
         std::size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
-        void AllocThread() 
+        std::atomic<bool> m_hasAllocFinished = false;
+
+        void AllocThreadFunc()
         {
             int allocCount = 0;
-            while (allocCount < 100)
+            while (allocCount < m_blockCount)
             {
-                std::future<void*> result_future = std::async(std::launch::async, [this] { return m_allocator.allocateBlock(true); });
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_blocks.push(reinterpret_cast<std::byte*>(&result_future));
+                m_blocks.push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
                 m_cv.notify_one();
                 ++allocCount;
             }
+
+            m_hasAllocFinished.store(true);
         }
-        void DeallocThread() 
+
+        void DeallocThreadFunc() 
         {
-            int deallocCount = 0;
-            while (deallocCount < 100)
+            std::byte* block;
+            while (true) // While the Alloc thread is running OR m_blocks is not empty.
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
-                m_cv.wait(lock, [this] { return !m_blocks.empty(); });
-                std::byte* block = m_blocks.front();
+                m_cv.wait(lock, [this] { return (!m_blocks.empty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
+                if (m_blocks.empty())
+                {
+                    return;
+                }
+                block = m_blocks.front();
                 m_blocks.pop();
-                std::future<bool> result_future = std::async(std::launch::async, [block, this] { return m_allocator.deallocateBlock(block, true); });
-                ASSERT_IF_EQUAL(result_future.get(), false);
-                ++deallocCount;
+                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(block), false);
             }
         }
     public:
@@ -64,9 +69,13 @@ namespace MemoryAllocator
 
         void StartThreads()
         {
-            m_allocThread = std::thread(&FixedAllocThreadTester::AllocThread, this);
-            m_deallocThread = std::thread(&FixedAllocThreadTester::DeallocThread, this);
+            m_allocThread = std::thread(&FixedAllocThreadTester::AllocThreadFunc, this);
+            m_deallocThread = std::thread(&FixedAllocThreadTester::DeallocThreadFunc, this);
+            m_allocThread.join();
+            m_deallocThread.join();
         }
+
+        std::size_t BlockCount() { return m_blocks.size(); }
 
         ~FixedAllocThreadTester()
         {
@@ -123,7 +132,6 @@ namespace MemoryAllocator
         }
 
         std::cout << "Deallocating 1 million blocks...\n";
-
         for (int i = 0; i < blockCount; ++i)
         {
             std::byte* first_element = std::move(blocks.front());
@@ -135,12 +143,16 @@ namespace MemoryAllocator
     void FxdAllocUTRaceCondition()
     {
         std::cout << "Starting thread saftey testing...\n";
+
+        static std::mutex mtx;
+        static std::condition_variable cv;
         size_t blockSize = 10;
-        size_t blockCount = 100;
+        size_t blockCount = 10000;
         FixedAllocThreadTester threadTester(blockSize, blockCount);
         threadTester.StartThreads();
+        ASSERT_IF_NOT_EQUAL(threadTester.BlockCount(), 0);
 
-        // TODO: Need to wait until all threads are complete before leaving the method.
+        std::cout << "Thread saftey testing complete!\n";
     }
 
     /// <summary>
@@ -155,7 +167,7 @@ namespace MemoryAllocator
         FxdAllocUTReuse();
         FxdAllocUTExceedCap();
         FxdAllocUTMoveManyBlocks();
-        //FxdAllocUTRaceCondition();
+        FxdAllocUTRaceCondition();
 
         std::cout << "FixedSizePooolAllocator unit tests passed!\n";
     }

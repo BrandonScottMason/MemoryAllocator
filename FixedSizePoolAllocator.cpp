@@ -1,5 +1,6 @@
 #include "FixedSizePoolAllocator.hpp"
 #include <iostream> // This is to use std::clog for error logging.
+#include <syncstream>
 
 namespace MemoryAllocator 
 {    
@@ -14,7 +15,7 @@ namespace MemoryAllocator
     {
         if (blockCount == 0 || blockSize == 0) 
         {
-            std::clog << "FSPA: Initialization of fixed size memory pool failed! BlockCount and blockSize cannot be zero.\n";
+            std::osyncstream(std::clog) << "FSPA: Initialization of fixed size memory pool failed! BlockCount and blockSize cannot be zero.\n";
             return;
         }
 
@@ -24,7 +25,7 @@ namespace MemoryAllocator
 
         if (m_memory == nullptr) 
         {
-            std::clog << "FSPA: Initialization of fixed size memory pool failed!\n";
+            std::osyncstream(std::clog) << "FSPA: Initialization of fixed size memory pool failed!\n";
             return;
         }
 
@@ -50,27 +51,28 @@ namespace MemoryAllocator
     {
         if (m_memory == nullptr) 
         {
-            std::clog << "FSPA: Fixed size memory pool is not initalized! Returning null.\n";
+            std::osyncstream(std::clog) << "FSPA: Fixed size memory pool is not initalized! Returning null.\n";
             return nullptr;
         }
 
-        if (!m_freeListHead && !threaded)
-        {
-            return nullptr;
-        }
-        else if (threaded) 
+        if (threaded) 
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] {return m_freeListHead; });
+            m_cv.wait(lock, [this] { return (m_freeListHead != nullptr); });
         }
 
-        FreeListNode* availableBlock = m_freeListHead;
-        m_freeListHead = m_freeListHead->next;
-        if (threaded) 
-        { 
-            m_cv.notify_one(); 
+        if (m_freeListHead != nullptr)
+        {
+            FreeListNode* allocatedBlock = m_freeListHead;
+            m_freeListHead = m_freeListHead->next;
+            return allocatedBlock;
         }
-        return availableBlock;
+        else
+        {
+            std::osyncstream(std::clog) << "FSPA: No free blocks available, returning nullptr...\n";
+        }
+
+        return nullptr;
     }
 
     bool FixedSizePoolAllocator::deallocateBlock(void* block, bool threaded)
