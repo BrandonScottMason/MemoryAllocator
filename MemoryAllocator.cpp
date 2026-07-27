@@ -4,6 +4,7 @@
 #include <queue>
 #include <stdexcept>
 #include <thread>
+#include <cassert>
 #include "FixedSizePoolAllocator.hpp"
 
 namespace MemoryAllocator
@@ -33,6 +34,9 @@ namespace MemoryAllocator
         std::size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
         std::atomic<bool> m_hasAllocFinished = false;
+        // Rule for writing better code: Do not rely on the user. If block count is being called without starting threads, 
+        // then this class is being used wrong and thus we must assert.
+        bool m_haveThreadsStarted = false;
 
         void AllocThreadFunc()
         {
@@ -66,16 +70,25 @@ namespace MemoryAllocator
         }
     public:
         FixedAllocThreadTester(std::size_t blockSize, std::size_t blockCount) : m_blockCount(blockCount), m_allocator(blockSize, blockCount) { }
+        FixedAllocThreadTester(const FixedAllocThreadTester&) = delete;
+        FixedAllocThreadTester& operator=(const FixedAllocThreadTester&) = delete;
+        FixedAllocThreadTester& operator=(const FixedAllocThreadTester&&) = delete;
 
         void StartThreads()
         {
+            assert(!m_haveThreadsStarted);
             m_allocThread = std::thread(&FixedAllocThreadTester::AllocThreadFunc, this);
             m_deallocThread = std::thread(&FixedAllocThreadTester::DeallocThreadFunc, this);
+            m_haveThreadsStarted = true;
             m_allocThread.join();
             m_deallocThread.join();
         }
 
-        std::size_t BlockCount() { return m_blocks.size(); }
+        std::size_t BlockCount() 
+        {
+            assert(m_haveThreadsStarted);
+            return m_blocks.size(); 
+        }
 
         ~FixedAllocThreadTester()
         {

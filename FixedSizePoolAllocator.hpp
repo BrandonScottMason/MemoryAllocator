@@ -35,6 +35,7 @@ namespace MemoryAllocator {
         // Delete assignment operators to avoid doubling buffers
         FixedSizePoolAllocator(const FixedSizePoolAllocator&) = delete;
         FixedSizePoolAllocator& operator=(const FixedSizePoolAllocator&) = delete;
+        FixedSizePoolAllocator& operator=(const FixedSizePoolAllocator&&) = delete;
 
         /// <summary>
         /// The one and only constructor for this allocator.
