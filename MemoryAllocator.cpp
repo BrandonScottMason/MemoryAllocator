@@ -48,6 +48,10 @@ namespace MemoryAllocator
                 m_cv.notify_one();
                 ++allocCount;
                 // Yielding here and at the start of the dealloc loop to ensure there's a back-and-fourth exhange between the two.
+                // This is for testing purposes only. This back-and-fourth is inefficent. The OS's overhead, thread scheduling and
+                // the fact that allocation caches are inheriently faster means this would run faster if this alloc method didn't yield
+                // and is allowed to complete all cycles before the dealloc thread gets a chance to wake up from waiting.
+                std::this_thread::yield();
             }
 
             m_hasAllocFinished.store(true);
