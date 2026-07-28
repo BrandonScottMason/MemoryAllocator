@@ -1,11 +1,11 @@
 // MemoryAllocator.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 #include <iostream>
-#include <queue>
 #include <stdexcept>
 #include <thread>
 #include <cassert>
 #include "FixedSizePoolAllocator.hpp"
+#include "TQueue.cpp"
 
 namespace MemoryAllocator
 {
@@ -30,7 +30,7 @@ namespace MemoryAllocator
         std::thread m_allocThread;
         std::mutex m_mutex;
         std::condition_variable m_cv;
-        std::queue<std::byte*> m_blocks;
+        TQueue<std::byte*> m_blocks;
         std::size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
         std::atomic<bool> m_hasAllocFinished = false;
@@ -44,7 +44,7 @@ namespace MemoryAllocator
             while (allocCount < m_blockCount)
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_blocks.push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
+                m_blocks.Push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
                 m_cv.notify_one();
                 ++allocCount;
             }
@@ -58,13 +58,13 @@ namespace MemoryAllocator
             while (true) // While the Alloc thread is running OR m_blocks is not empty.
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
-                m_cv.wait(lock, [this] { return (!m_blocks.empty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
-                if (m_blocks.empty())
+                m_cv.wait(lock, [this] { return (!m_blocks.IsEmpty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
+                if (m_blocks.IsEmpty())
                 {
                     return;
                 }
-                block = m_blocks.front();
-                m_blocks.pop();
+                block = m_blocks.Front();
+                m_blocks.Pop();
                 ASSERT_IF_EQUAL(m_allocator.deallocateBlock(block), false);
             }
         }
@@ -87,7 +87,7 @@ namespace MemoryAllocator
         std::size_t BlockCount() 
         {
             assert(m_haveThreadsStarted);
-            return m_blocks.size(); 
+            return m_blocks.Size(); 
         }
 
         ~FixedAllocThreadTester()
@@ -133,7 +133,7 @@ namespace MemoryAllocator
     void FxdAllocUTMoveManyBlocks()
     {
         size_t blockCount = 10000000;
-        std::queue<std::byte*> blocks;
+        TQueue<std::byte*> blocks;
         FixedSizePoolAllocator allocator(1, blockCount);
 
         std::cout << "Allocating 1 million blocks...\n";
@@ -141,14 +141,14 @@ namespace MemoryAllocator
         {
             std::byte* block = reinterpret_cast<std::byte*>(allocator.allocateBlock());
             ASSERT_IF_EQUAL(block, nullptr);
-            blocks.push(block);
+            blocks.Push(block);
         }
 
         std::cout << "Deallocating 1 million blocks...\n";
         for (int i = 0; i < blockCount; ++i)
         {
-            std::byte* first_element = std::move(blocks.front());
-            blocks.pop();
+            std::byte* first_element = std::move(blocks.Front());
+            blocks.Pop();
             ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(first_element), true);
         }
     }
@@ -160,7 +160,7 @@ namespace MemoryAllocator
         static std::mutex mtx;
         static std::condition_variable cv;
         size_t blockSize = 10;
-        size_t blockCount = 10000;
+        size_t blockCount = 100000;
         FixedAllocThreadTester threadTester(blockSize, blockCount);
         threadTester.StartThreads();
         ASSERT_IF_NOT_EQUAL(threadTester.BlockCount(), 0);
@@ -168,8 +168,46 @@ namespace MemoryAllocator
         std::cout << "Thread saftey testing complete!\n";
     }
 
+    void TQueueSequentialPushPop()
+    {
+        std::cout << "Starting a sequential push pop test...\n";
+
+        int cycles = 10;
+        TQueue<int> intQueue;
+
+        for (int i = 0; i < (cycles / 2); i++)
+        {
+            intQueue.Push(i);
+        }
+
+        int checkValue = 0;
+        while (!intQueue.IsEmpty())
+        {
+            int front = intQueue.Front();
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            intQueue.Pop();
+            checkValue++;
+        }
+
+        for (int i = 0; i < cycles; i++)
+        {
+            intQueue.Push(i);
+        }
+
+        checkValue = 0;
+
+        while (!intQueue.IsEmpty())
+        {
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            intQueue.Pop();
+            checkValue++;
+        }
+
+        std::cout << "Sequential push pop test complete!\n";
+    }
+
     /// <summary>
-    /// Unit tests specifically for the FixedSizePoolAllocator.
+    /// Unit tests specifically for the FixedSizePoolAllocator class.
     /// </summary>
     void FixedSizePoolAllocatorUnitTests()
     {
@@ -182,7 +220,19 @@ namespace MemoryAllocator
         FxdAllocUTMoveManyBlocks();
         FxdAllocUTRaceCondition();
 
-        std::cout << "FixedSizePooolAllocator unit tests passed!\n";
+        std::cout << "FixedSizePooolAllocator unit tests completed!\n";
+    }
+
+    /// <summary>
+    /// Unit tests specifically for the TQueue class.
+    /// </summary>
+    void TQueueUnitTests()
+    {
+        std::cout << "Starting TQueue unit tests...\n";
+
+        TQueueSequentialPushPop();
+
+        std::cout << "Tqueue unit tests completed!\n";
     }
 
     /// <summary>
@@ -191,6 +241,8 @@ namespace MemoryAllocator
     void RunUnitTests()
     {
         std::cout << "Running Unit tests...\n";
+
+        TQueueUnitTests();
 
         FixedSizePoolAllocatorUnitTests();
 

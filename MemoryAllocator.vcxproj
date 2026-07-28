@@ -141,6 +141,7 @@
   <ItemGroup>
     <ClCompile Include="FixedSizePoolAllocator.cpp" />
     <ClCompile Include="MemoryAllocator.cpp" />
+    <ClCompile Include="TQueue.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FixedSizePoolAllocator.hpp" />
