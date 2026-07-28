@@ -47,6 +47,7 @@ namespace MemoryAllocator
                 m_blocks.Push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
                 m_cv.notify_one();
                 ++allocCount;
+                // Yielding here and at the start of the dealloc loop to ensure there's a back-and-fourth exhange between the two.
             }
 
             m_hasAllocFinished.store(true);
@@ -57,6 +58,7 @@ namespace MemoryAllocator
             std::byte* block;
             while (true) // While the Alloc thread is running OR m_blocks is not empty.
             {
+                std::this_thread::yield();
                 std::unique_lock<std::mutex> lock(m_mutex);
                 m_cv.wait(lock, [this] { return (!m_blocks.IsEmpty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
                 if (m_blocks.IsEmpty())
