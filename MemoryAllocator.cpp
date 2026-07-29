@@ -33,7 +33,7 @@ namespace MemoryAllocator
         TQueue<std::byte*> m_blocks;
         std::size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
-        std::atomic<bool> m_hasAllocFinished = false;
+        std::atomic<bool> m_hasAllocFinished{ false };
         // Rule for writing better code: Do not rely on the user. If block count is being called without starting threads, 
         // then this class is being used wrong and thus we must assert.
         bool m_haveThreadsStarted = false;
@@ -54,7 +54,7 @@ namespace MemoryAllocator
                 std::this_thread::yield();
             }
 
-            m_hasAllocFinished.store(true);
+            m_hasAllocFinished.store(true, std::memory_order::release);
         }
 
         void DeallocThreadFunc() 
@@ -65,13 +65,16 @@ namespace MemoryAllocator
                 std::this_thread::yield();
                 std::unique_lock<std::mutex> lock(m_mutex);
                 m_cv.wait(lock, [this] { return (!m_blocks.IsEmpty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
-                if (m_blocks.IsEmpty())
+                if (m_blocks.IsEmpty() && m_hasAllocFinished.load(std::memory_order::acquire))
                 {
                     return;
                 }
-                block = m_blocks.Front();
+                if (!m_blocks.Front(block))
+                {
+                    continue;
+                }
                 m_blocks.Pop();
-                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(block), false);
+                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(block, true), false);
             }
         }
     public:
@@ -153,9 +156,12 @@ namespace MemoryAllocator
         std::cout << "Deallocating 1 million blocks...\n";
         for (int i = 0; i < blockCount; ++i)
         {
-            std::byte* first_element = std::move(blocks.Front());
-            blocks.Pop();
-            ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(first_element), true);
+            std::byte* first_element;
+            while (!blocks.Front(first_element))
+            {
+                blocks.Pop();
+                ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(first_element), true);
+            }
         }
     }
 
@@ -169,7 +175,8 @@ namespace MemoryAllocator
         size_t blockCount = 100000;
         FixedAllocThreadTester threadTester(blockSize, blockCount);
         threadTester.StartThreads();
-        ASSERT_IF_NOT_EQUAL(threadTester.BlockCount(), 0);
+        size_t endCount = threadTester.BlockCount();
+        ASSERT_IF_NOT_EQUAL(endCount, 0);
 
         std::cout << "Thread saftey testing complete!\n";
     }
@@ -189,8 +196,10 @@ namespace MemoryAllocator
         int checkValue = 0;
         while (!intQueue.IsEmpty())
         {
-            int front = intQueue.Front();
-            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            int front;
+            if (!intQueue.Front(front))
+                continue;
+            ASSERT_IF_NOT_EQUAL(front, checkValue);
             intQueue.Pop();
             checkValue++;
         }
@@ -204,7 +213,10 @@ namespace MemoryAllocator
 
         while (!intQueue.IsEmpty())
         {
-            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            int front;
+            if (!intQueue.Front(front))
+                continue;
+            ASSERT_IF_NOT_EQUAL(front, checkValue);
             intQueue.Pop();
             checkValue++;
         }

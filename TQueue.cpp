@@ -1,97 +1,157 @@
 #pragma once
+#include <atomic>
 
 namespace MemoryAllocator
 {
+// cross platform macro that uses the right attribute per compiler to override the heuristic and force inlining
+#if defined(_MSC_VER)
+    #define FORCE_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+    #define FORCE_INLINE inline __attribute__((always_inline))
+#else
+    #define FORCE_INLINE inline
+#endif
+
     constexpr size_t DEFAULT_TQUEUE_CAPACITY = 4;
 
     /// <summary>
     /// The original goal of this class was for practice and educational purposes but since I'm doing this
-    /// I may as well make this thread-safe (TODO) so that I don't have to worry about mutexes in my Unit Testing.
-    /// The T stands for Threaded (TODO).
+    /// I may as well make this thread-safe so that I don't have to worry about mutexes in my Unit Testing.
+    /// The T stands for Threaded.
     /// </summary>
     template <typename T>
     class TQueue
     {
     private:
-        T* m_buffer;
-        size_t m_head;
-        size_t m_tail;
-        size_t m_capacity;
-        
-        void enlargeOrShift()
+        alignas(64) std::atomic<T*> m_buffer;
+        alignas(64) std::atomic<size_t> m_head{ 0 };
+        alignas(64) std::atomic<size_t> m_tail{ 0 };
+        alignas(64) std::atomic<size_t> m_capacity{ DEFAULT_TQUEUE_CAPACITY };
+        std::atomic_flag m_bufferLock = ATOMIC_FLAG_INIT;
+
+        FORCE_INLINE void lockResize()
         {
-            size_t currentSize = Size();
+            while (m_bufferLock.test_and_set(std::memory_order::acquire));
+        }
+
+        FORCE_INLINE void unlockResize()
+        {
+            m_bufferLock.clear(std::memory_order::release);
+        }
+        
+        void enlargeOrShiftUnderLock(size_t currentHead, size_t currentTail)
+        {
+            size_t currentSize = currentTail - currentHead;
             size_t newCapacity;
-            if (currentSize == m_capacity) // Need to enlarge
+            size_t currentCapacity = m_capacity.load(std::memory_order::acquire);
+            if (currentSize == currentCapacity) // Need to enlarge
             {
-                newCapacity = (m_capacity == 0) ? DEFAULT_TQUEUE_CAPACITY : (m_capacity * 2);
+                newCapacity = (currentCapacity == 0) ? DEFAULT_TQUEUE_CAPACITY : (currentCapacity * 2);
             }
             else // Need to shift
             {
-                newCapacity = (m_capacity == 0) ? DEFAULT_TQUEUE_CAPACITY : m_capacity;
+                newCapacity = (currentCapacity == 0) ? DEFAULT_TQUEUE_CAPACITY : currentCapacity;
             }
             
+            T* currBuffer = m_buffer.load(std::memory_order_relaxed);
             T* newBuffer = new T[newCapacity];
 
-            [[gsl::suppress(6386, justification: "currentSize will always be < newCapacity here.")]]
+            [[gsl::suppress("6386", justification: "currentSize will always be < newCapacity here.")]]
             for (size_t i = 0; i < currentSize; ++i)
             {
-                newBuffer[i] = m_buffer[i];
+                newBuffer[i] = currBuffer[i];
             }
 
-            delete[] m_buffer;
-            m_buffer = newBuffer;
+            m_buffer.store(newBuffer, std::memory_order::release);
+            m_head.store(0, std::memory_order::release);
+            m_tail.store(currentSize, std::memory_order::release);
+            m_capacity.store(newCapacity, std::memory_order::release);
 
-            m_head = 0;
-            m_tail = currentSize;
-            m_capacity = newCapacity;
+            delete[] currBuffer;
         }
     public:
         TQueue(TQueue<T>&) = delete;
         TQueue(TQueue<T>&&) = delete;
         TQueue& operator=(const TQueue&) = delete;
 
-        TQueue() : m_capacity(0), m_head(0), m_tail(0)
+        explicit FORCE_INLINE TQueue()
         {
-            enlargeOrShift();
+            m_buffer.store(new T[m_capacity.load(std::memory_order::relaxed)], std::memory_order::relaxed);
         }
 
         ~TQueue()
         {
-            delete[] m_buffer;
+            delete[] m_buffer.load(std::memory_order::relaxed);
         }
 
-        size_t Size() { return m_tail - m_head; }
+        FORCE_INLINE size_t Size() const 
+        {
+            // Loading head first makes sure that tail >= head when tail is read next. This avoids a layout drift.
+            size_t head = m_head.load(std::memory_order::acquire);
+            return m_tail.load(std::memory_order::acquire) - head;
+        }
 
         /// <summary>
         /// Puts the item at the tail. This is where the buffer gets enlarged or shifted.
         /// </summary>
-        /// <param name="item"></param>
-        void Push(T item)
+        /// <param name="item">Item to be added to the queue.</param>
+        FORCE_INLINE void Push(T item)
         {
-            if (m_tail == m_capacity)
+            while (true)
             {
-                enlargeOrShift();
-            }
+                size_t cap = Capacity();
+                size_t tail = m_tail.load(std::memory_order::acquire);
+                if (tail >= cap)
+                {
+                    lockResize();
+                    size_t currHead = m_head.load(std::memory_order::relaxed);
+                    size_t currTail = m_tail.load(std::memory_order::relaxed);
+                    
+                    // Double check to make sure we need to enlarge/shift
+                    if (currTail >= m_capacity.load(std::memory_order::relaxed))
+                    {
+                        enlargeOrShiftUnderLock(currHead, currTail);
+                    }
+                    unlockResize();
+                    continue;
+                }
 
-            m_buffer[m_tail] = item;
-            m_tail++;
+                if (m_tail.compare_exchange_weak(tail, tail + 1, std::memory_order::acquire, std::memory_order::relaxed))
+                {
+                    // Copy the memory address of the storage location into a local variable.
+                    T* localBuffer = m_buffer.load(std::memory_order::acquire);
+
+                    localBuffer[tail] = item;
+
+                    std::atomic_thread_fence(std::memory_order::release);
+                    break;
+                }
+            }
         }
 
         /// <summary>
         /// Similar to STL this will only pop and not return anything.
         /// </summary>
-        void Pop()
+        FORCE_INLINE void Pop()
         {
-            if (IsEmpty())
+            size_t head = m_head.load(std::memory_order::acquire);
+            size_t tail = m_tail.load(std::memory_order::acquire);
+            if ( head == tail )
                 return;
 
-            m_head++;
-
-            if (m_head == m_tail)
+            if (m_head.compare_exchange_weak(head, head + 1, std::memory_order::acquire, std::memory_order::relaxed))
             {
-                m_head = 0;
-                m_tail = 0;
+                if (m_head.load(std::memory_order::acquire) == m_tail.load(std::memory_order::acquire))
+                {
+                    lockResize();
+                    // Double check for extra saftey!
+                    if (m_head.load(std::memory_order::acquire) == m_tail.load(std::memory_order::acquire))
+                    {
+                        m_head.store(0, std::memory_order::release);
+                        m_tail.store(0, std::memory_order::release);
+                    }
+                    unlockResize();
+                }
             }
         }
 
@@ -99,9 +159,20 @@ namespace MemoryAllocator
         /// Similar to STL this only returns what's at the head without popping it.
         /// </summary>
         /// <returns>The next item to be popped.</returns>
-        T Front()
+        FORCE_INLINE bool Front(T& out)
         {
-            return m_buffer[m_head];
+            // Enforces that we get the most up to date data
+            std::atomic_thread_fence(std::memory_order::acquire);
+
+            size_t head = m_head.load(std::memory_order::relaxed);
+            
+            if ( head >= m_tail.load(std::memory_order::relaxed))
+                return false;
+
+            T* localBuffer = m_buffer.load(std::memory_order::acquire);
+            out = localBuffer[head];
+
+            return true;
         }
 
         /// <summary>
@@ -109,9 +180,14 @@ namespace MemoryAllocator
         /// "A good name is the best documentation." - Chris Zimmerman
         /// </summary>
         /// <returns>True if queue is empty. False if not.</returns>
-        bool IsEmpty()
+        FORCE_INLINE bool IsEmpty() const
         {
-            return m_head == m_tail;
+            return m_head.load(std::memory_order::acquire) == m_tail.load(std::memory_order::acquire);
+        }
+
+        FORCE_INLINE size_t Capacity() const
+        {
+            return m_capacity.load(std::memory_order_acquire);
         }
 
     };
