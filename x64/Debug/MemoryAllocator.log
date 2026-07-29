@@ -1,2 +1,5 @@
-﻿  MemoryAllocator.cpp
+﻿  FixedSizePoolAllocator.cpp
+  SQueue.cpp
+  TQueue.cpp
+  Generating Code...
   MemoryAllocator.vcxproj -> C:\C++Projects\MemoryAllocator\x64\Debug\MemoryAllocator.exe

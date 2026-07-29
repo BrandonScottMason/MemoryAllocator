@@ -1,19 +1,10 @@
 #pragma once
 #include <atomic>
+#include "Constants.hpp"
+#include "Macros.hpp"
 
 namespace MemoryAllocator
 {
-// cross platform macro that uses the right attribute per compiler to override the heuristic and force inlining
-#if defined(_MSC_VER)
-    #define FORCE_INLINE __forceinline
-#elif defined(__GNUC__) || defined(__clang__)
-    #define FORCE_INLINE inline __attribute__((always_inline))
-#else
-    #define FORCE_INLINE inline
-#endif
-
-    constexpr size_t DEFAULT_TQUEUE_CAPACITY = 4;
-
     /// <summary>
     /// The original goal of this class was for practice and educational purposes but since I'm doing this
     /// I may as well make this thread-safe so that I don't have to worry about mutexes in my Unit Testing.
@@ -26,7 +17,7 @@ namespace MemoryAllocator
         alignas(64) std::atomic<T*> m_buffer;
         alignas(64) std::atomic<size_t> m_head{ 0 };
         alignas(64) std::atomic<size_t> m_tail{ 0 };
-        alignas(64) std::atomic<size_t> m_capacity{ DEFAULT_TQUEUE_CAPACITY };
+        alignas(64) std::atomic<size_t> m_capacity{ DEFAULT_QUEUE_CAPACITY };
         std::atomic_flag m_bufferLock = ATOMIC_FLAG_INIT;
 
         FORCE_INLINE void lockResize()
@@ -46,14 +37,14 @@ namespace MemoryAllocator
             size_t currentCapacity = m_capacity.load(std::memory_order::acquire);
             if (currentSize == currentCapacity) // Need to enlarge
             {
-                newCapacity = (currentCapacity == 0) ? DEFAULT_TQUEUE_CAPACITY : (currentCapacity * 2);
+                newCapacity = (currentCapacity == 0) ? DEFAULT_QUEUE_CAPACITY : (currentCapacity * 2);
             }
             else // Need to shift
             {
-                newCapacity = (currentCapacity == 0) ? DEFAULT_TQUEUE_CAPACITY : currentCapacity;
+                newCapacity = (currentCapacity == 0) ? DEFAULT_QUEUE_CAPACITY : currentCapacity;
             }
             
-            T* currBuffer = m_buffer.load(std::memory_order_relaxed);
+            T* currBuffer = m_buffer.load(std::memory_order::relaxed);
             T* newBuffer = new T[newCapacity];
 
             [[gsl::suppress("6386", justification: "currentSize will always be < newCapacity here.")]]
@@ -187,8 +178,7 @@ namespace MemoryAllocator
 
         FORCE_INLINE size_t Capacity() const
         {
-            return m_capacity.load(std::memory_order_acquire);
+            return m_capacity.load(std::memory_order::acquire);
         }
-
     };
 }

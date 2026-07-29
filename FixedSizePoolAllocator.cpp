@@ -1,16 +1,10 @@
+#include "Constants.hpp"
 #include "FixedSizePoolAllocator.hpp"
 #include <iostream> // This is to use std::clog for error logging.
 #include <syncstream>
 
 namespace MemoryAllocator 
 {    
-    // This blank namespace is for things that will remain purley local to this file so that it cannot conflict with other files.
-    namespace 
-    {
-        // size_t max to avoid including <algorithm>
-        const constexpr size_t max(const size_t& a, const size_t& b) { return (a < b) ? b : a; }
-    }
-
     FixedSizePoolAllocator::FixedSizePoolAllocator(std::size_t blockSize, std::size_t blockCount)
     {
         if (blockCount == 0 || blockSize == 0) 

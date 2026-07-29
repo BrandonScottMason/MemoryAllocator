@@ -6,23 +6,10 @@
 #include <cassert>
 #include "FixedSizePoolAllocator.hpp"
 #include "TQueue.cpp"
+#include "SQueue.cpp"
 
 namespace MemoryAllocator
 {
-#ifndef NDEBUG
-    #define ASSERT_IF_EQUAL(actual, expected) \
-        if ((actual) == (expected))  { \
-            std::cerr << "❌ Test Failed! Line " << __LINE__ << "\n"; \
-        }
-    #define ASSERT_IF_NOT_EQUAL(actual, expected) \
-        if ((actual) != (expected)) { \
-            std::cerr << "❌ Test Failed! Line " << __LINE__ << "\n"; \
-        }
-#else
-    #define ASSERT_IF_EQUAL(actual, expected)
-    #define ASSERT_IF_NOT_EQUAL(actual, expected)
-#endif // !NDEBUG
-
     class FixedAllocThreadTester
     {
     private:
@@ -142,7 +129,7 @@ namespace MemoryAllocator
     void FxdAllocUTMoveManyBlocks()
     {
         size_t blockCount = 10000000;
-        TQueue<std::byte*> blocks;
+        SQueue<std::byte*> blocks;
         FixedSizePoolAllocator allocator(1, blockCount);
 
         std::cout << "Allocating 1 million blocks...\n";
@@ -156,12 +143,9 @@ namespace MemoryAllocator
         std::cout << "Deallocating 1 million blocks...\n";
         for (int i = 0; i < blockCount; ++i)
         {
-            std::byte* first_element;
-            while (!blocks.Front(first_element))
-            {
-                blocks.Pop();
-                ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(first_element), true);
-            }
+            std::byte* first_element = blocks.Front();
+            blocks.Pop();
+            ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(first_element), true);
         }
     }
 
@@ -181,12 +165,12 @@ namespace MemoryAllocator
         std::cout << "Thread saftey testing complete!\n";
     }
 
-    void TQueueSequentialPushPop()
+    void SQueueSequentialPushPop()
     {
         std::cout << "Starting a sequential push pop test...\n";
 
         int cycles = 10;
-        TQueue<int> intQueue;
+        SQueue<int> intQueue;
 
         for (int i = 0; i < (cycles / 2); i++)
         {
@@ -196,10 +180,7 @@ namespace MemoryAllocator
         int checkValue = 0;
         while (!intQueue.IsEmpty())
         {
-            int front;
-            if (!intQueue.Front(front))
-                continue;
-            ASSERT_IF_NOT_EQUAL(front, checkValue);
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
             intQueue.Pop();
             checkValue++;
         }
@@ -213,10 +194,7 @@ namespace MemoryAllocator
 
         while (!intQueue.IsEmpty())
         {
-            int front;
-            if (!intQueue.Front(front))
-                continue;
-            ASSERT_IF_NOT_EQUAL(front, checkValue);
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
             intQueue.Pop();
             checkValue++;
         }
@@ -242,15 +220,15 @@ namespace MemoryAllocator
     }
 
     /// <summary>
-    /// Unit tests specifically for the TQueue class.
+    /// Unit tests specifically for the SQueue class.
     /// </summary>
-    void TQueueUnitTests()
+    void SQueueUnitTests()
     {
-        std::cout << "Starting TQueue unit tests...\n";
+        std::cout << "Starting SQueue unit tests...\n";
 
-        TQueueSequentialPushPop();
+        SQueueSequentialPushPop();
 
-        std::cout << "Tqueue unit tests completed!\n";
+        std::cout << "SQueue unit tests completed!\n";
     }
 
     /// <summary>
@@ -260,7 +238,7 @@ namespace MemoryAllocator
     {
         std::cout << "Running Unit tests...\n";
 
-        TQueueUnitTests();
+        SQueueUnitTests();
 
         FixedSizePoolAllocatorUnitTests();
 
