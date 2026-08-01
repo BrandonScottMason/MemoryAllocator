@@ -1,9 +1,11 @@
 // MemoryAllocator.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
+#include <cassert>
 #include <iostream>
+#include <queue>
+#include <random>
 #include <stdexcept>
 #include <thread>
-#include <cassert>
 #include "FixedSizePoolAllocator.hpp"
 #include "TQueue.cpp"
 #include "SQueue.cpp"
@@ -17,7 +19,7 @@ namespace MemoryAllocator
         std::thread m_allocThread;
         std::mutex m_mutex;
         std::condition_variable m_cv;
-        TQueue<std::byte*> m_blocks;
+        std::queue<std::byte*> m_blocks;
         std::size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
         std::atomic<bool> m_hasAllocFinished{ false };
@@ -31,7 +33,7 @@ namespace MemoryAllocator
             while (allocCount < m_blockCount)
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_blocks.Push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
+                m_blocks.push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
                 m_cv.notify_one();
                 ++allocCount;
                 // Yielding here and at the start of the dealloc loop to ensure there's a back-and-fourth exhange between the two.
@@ -51,17 +53,14 @@ namespace MemoryAllocator
             {
                 std::this_thread::yield();
                 std::unique_lock<std::mutex> lock(m_mutex);
-                m_cv.wait(lock, [this] { return (!m_blocks.IsEmpty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
-                if (m_blocks.IsEmpty() && m_hasAllocFinished.load(std::memory_order::acquire))
+                m_cv.wait(lock, [this] { return (!m_blocks.empty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
+                if (m_blocks.empty() && m_hasAllocFinished.load(std::memory_order::acquire))
                 {
                     return;
                 }
-                if (!m_blocks.Front(block))
-                {
-                    continue;
-                }
-                m_blocks.Pop();
-                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(block, true), false);
+
+                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(m_blocks.front(), true), false);
+                m_blocks.pop();
             }
         }
     public:
@@ -83,7 +82,7 @@ namespace MemoryAllocator
         std::size_t BlockCount() 
         {
             assert(m_haveThreadsStarted);
-            return m_blocks.Size(); 
+            return m_blocks.size(); 
         }
 
         ~FixedAllocThreadTester()
@@ -165,7 +164,7 @@ namespace MemoryAllocator
         std::cout << "Thread saftey testing complete!\n";
     }
 
-    void SQueueSequentialPushPop()
+    void SQueueUTSequentialPushPop()
     {
         std::cout << "Starting a sequential push pop test...\n";
 
@@ -177,12 +176,10 @@ namespace MemoryAllocator
             intQueue.Push(i);
         }
 
-        int checkValue = 0;
-        while (!intQueue.IsEmpty())
+        for(int i = 0; i < (cycles / 2); i++)
         {
-            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), i);
             intQueue.Pop();
-            checkValue++;
         }
 
         for (int i = 0; i < cycles; i++)
@@ -190,16 +187,117 @@ namespace MemoryAllocator
             intQueue.Push(i);
         }
 
-        checkValue = 0;
-
-        while (!intQueue.IsEmpty())
+        for (int i = 0; i < cycles; i++)
         {
-            ASSERT_IF_NOT_EQUAL(intQueue.Front(), checkValue);
+            ASSERT_IF_NOT_EQUAL(intQueue.Front(), i);
             intQueue.Pop();
-            checkValue++;
+        }
+
+        ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
+
+        std::cout << "Sequential push pop test complete!\n";
+    }
+
+    void TQueueUTSequentialPushPop()
+    {
+        std::cout << "Starting a sequential push pop test...\n";
+
+        int cycles = 10;
+        TQueue<int> intQueue;
+
+        for (int i = 0; i < (cycles / 2); i++)
+        {
+            intQueue.Push(i);
+        }
+
+        for (int i = 0; i < (cycles / 2); i++)
+        {
+            int result;
+            if (intQueue.Pop(result))
+            {
+                ASSERT_IF_NOT_EQUAL(result, i);;
+            }
+            else
+            {
+                ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
+            }
+        }
+
+        for (int i = 0; i < cycles; i++)
+        {
+            intQueue.Push(i);
+        }
+
+        for (int i = 0; i < cycles; i++)
+        {
+            int reuslt;
+            if (intQueue.Pop(reuslt))
+            {
+                ASSERT_IF_NOT_EQUAL(reuslt, i);
+            }
+            else
+            {
+                ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
+            }
         }
 
         std::cout << "Sequential push pop test complete!\n";
+    }
+
+    void TQueueProducer(TQueue<int>& q, int cycles, int sleepTimeMs = 0)
+    {
+        for (int i = 0; i < cycles; i++)
+        {
+            q.Push(i);
+
+            if (sleepTimeMs > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
+            }
+        }
+    }
+
+    void TQueueConsumer(TQueue<int>& q, int cycles, int sleepTimeMs = 0)
+    {
+        int cycleCounter = 0;
+        while (cycleCounter < cycles)
+        {
+            int popResult;
+            if (q.Pop(popResult))
+            {
+                //ASSERT_IF_NOT_EQUAL(popResult, cycleCounter);
+                cycleCounter++;
+            }
+
+            if (sleepTimeMs > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
+            }
+        }
+    }
+
+    void TQueueUTTwoThreads()
+    {
+        std::cout << "Starting two threads. One producer and one consumer threads...\n";
+
+        TQueue<int> intQueue;
+        std::thread producer(TQueueProducer, std::ref(intQueue), 100, 0);
+        std::thread consumer(TQueueConsumer, std::ref(intQueue), 100, 0);
+
+        producer.join();
+        consumer.join();
+
+        ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
+
+        std::vector<int> vec;
+        while (!intQueue.IsEmpty())
+        {
+            int num;
+            if (intQueue.Pop(num))
+                vec.push_back(num);
+        }
+
+        std::cout << "Producer and consumer test complete!\n";
     }
 
     /// <summary>
@@ -226,9 +324,19 @@ namespace MemoryAllocator
     {
         std::cout << "Starting SQueue unit tests...\n";
 
-        SQueueSequentialPushPop();
+        SQueueUTSequentialPushPop();
 
         std::cout << "SQueue unit tests completed!\n";
+    }
+
+    void TQueueUnitTests()
+    {
+        std::cout << "Starting TQueue unit tests...\n";
+
+        TQueueUTSequentialPushPop();
+        TQueueUTTwoThreads();
+
+        std::cout << "TQueue unit tests completed!\n";
     }
 
     /// <summary>
@@ -239,7 +347,7 @@ namespace MemoryAllocator
         std::cout << "Running Unit tests...\n";
 
         SQueueUnitTests();
-
+        TQueueUnitTests();
         FixedSizePoolAllocatorUnitTests();
 
         std::cout << "Unit tests complete!\n";
