@@ -125,19 +125,20 @@ namespace MemoryAllocator
             m_tail = (m_tail + 1) % m_capacity;
             ++m_size;
         }
+
         /// <summary>
         /// Move Push
         /// </summary>
         /// <param name="item"></param>
-        /// <returns></returns>
-        FORCE_INLINE void Push(T&& item)
+        template<class U>
+        FORCE_INLINE void Push(U&& item)
         {
             if (m_size == m_capacity)
             {
                 enlarge();
             }
 
-            m_buffer[m_tail] = std::move(item);
+            m_buffer[m_tail] = std::forward<U>(item);
             m_tail = (m_tail + 1) % m_capacity;
             ++m_size;
         }

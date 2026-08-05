@@ -48,7 +48,6 @@ namespace MemoryAllocator
 
         void DeallocThreadFunc() 
         {
-            std::byte* block;
             while (true) // While the Alloc thread is running OR m_blocks is not empty.
             {
                 std::this_thread::yield();
@@ -213,7 +212,7 @@ namespace MemoryAllocator
         for (int i = 0; i < (cycles / 2); i++)
         {
             int result;
-            if (intQueue.Pop(result))
+            if (intQueue.WaitAndPop(result))
             {
                 ASSERT_IF_NOT_EQUAL(result, i);;
             }
@@ -231,7 +230,7 @@ namespace MemoryAllocator
         for (int i = 0; i < cycles; i++)
         {
             int reuslt;
-            if (intQueue.Pop(reuslt))
+            if (intQueue.WaitAndPop(reuslt))
             {
                 ASSERT_IF_NOT_EQUAL(reuslt, i);
             }
@@ -263,9 +262,9 @@ namespace MemoryAllocator
         while (cycleCounter < cycles)
         {
             int popResult;
-            if (q.Pop(popResult))
+            if (q.WaitAndPop(popResult))
             {
-                //ASSERT_IF_NOT_EQUAL(popResult, cycleCounter);
+                ASSERT_IF_NOT_EQUAL(popResult, cycleCounter);
                 cycleCounter++;
             }
 
@@ -281,21 +280,13 @@ namespace MemoryAllocator
         std::cout << "Starting two threads. One producer and one consumer threads...\n";
 
         TQueue<int> intQueue;
-        std::thread producer(TQueueProducer, std::ref(intQueue), 100, 0);
-        std::thread consumer(TQueueConsumer, std::ref(intQueue), 100, 0);
+        std::thread producer(TQueueProducer, std::ref(intQueue), 100, 5);
+        std::thread consumer(TQueueConsumer, std::ref(intQueue), 100, 10);
 
         producer.join();
         consumer.join();
 
         ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
-
-        std::vector<int> vec;
-        while (!intQueue.IsEmpty())
-        {
-            int num;
-            if (intQueue.Pop(num))
-                vec.push_back(num);
-        }
 
         std::cout << "Producer and consumer test complete!\n";
     }
