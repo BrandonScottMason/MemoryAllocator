@@ -197,7 +197,7 @@ namespace MemoryAllocator
         std::cout << "Sequential push pop test complete!\n";
     }
 
-    void TQueueUTSequentialPushPop()
+    static void TQueueUTSequentialPushPop()
     {
         std::cout << "Starting a sequential push pop test...\n";
 
@@ -275,7 +275,7 @@ namespace MemoryAllocator
         }
     }
 
-    void TQueueUTTwoThreads()
+    static void TQueueUTTwoThreads()
     {
         std::cout << "Starting two threads. One producer and one consumer threads...\n";
 
@@ -289,6 +289,132 @@ namespace MemoryAllocator
         ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
 
         std::cout << "Producer and consumer test complete!\n";
+    }
+
+    static void TQueueUTPushTryPop()
+    {
+        std::cout << "Starting push try pop test...\n";
+        TQueue<int> q;
+        q.Push(1);
+        q.Push(2);
+        ASSERT_IF_NOT_EQUAL(q.Size(), 2);
+        int v = 0;
+        bool ok = q.TryPop(v);
+        ASSERT_IF_NOT_EQUAL(ok && v == 1, true);
+        ok = q.TryPop(v);
+        ASSERT_IF_NOT_EQUAL(ok && v == 2, true);
+        ASSERT_IF_NOT_EQUAL(q.IsEmpty(), true);
+
+        std::cout << "Push Try Pop test complete!\n";
+    }
+
+    static void TQueueUTWaitAndPopBlocksAndReceives()
+    {
+        std::cout << "Starting wait and pop blocks and recieves test...\n";
+
+        TQueue<int> q;
+        int result = -1;
+
+        std::thread consumer([&]()
+        {
+            bool ok = q.WaitAndPop(result);
+            assert(ok);
+        });
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        q.Push(42);
+
+        consumer.join();
+        ASSERT_IF_NOT_EQUAL(result, 42);
+
+        std::cout << "Wait and pop blocks and recieves test complete!\n";
+    }
+
+    static void TQueueUTCloseUnblocksWaiter()
+    {
+        std::cout << "Starting Close() unblocks waiter test...\n";
+
+        TQueue<int> q;
+        int out = -1;
+
+        std::thread waiter([&]()
+        {
+            bool ok = q.WaitAndPop(out);
+            // WaitAndPop should return false when queue is closed and empty
+            ASSERT_IF_NOT_EQUAL(ok, false);
+        });
+
+        // Give the waiter time to block on wait
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        q.Close();
+
+        waiter.join();
+
+        std::cout << "Close() unblocks waiter test complete!\n";
+    }
+
+    static void TQueueUTMultipleProducersConsumers()
+    {
+        std::cout << "Starting multiple producers and consumers test...\n";
+
+        TQueue<int> q;
+        const int producers = 4;
+        const int perProducer = 1000;
+        const int total = producers * perProducer;
+
+        std::atomic<int> poppedCount{ 0 };
+        std::atomic<long long> sum{ 0 };
+
+        // Consumers
+        std::vector<std::thread> consumers;
+        for (int c = 0; c < 2; ++c)
+        {
+            consumers.emplace_back([&]() 
+            {
+                int val;
+                while (true)
+                {
+                    if (!q.WaitAndPop(val))
+                        break;
+                    poppedCount.fetch_add(1, std::memory_order_relaxed);
+                    sum.fetch_add(val, std::memory_order_relaxed);
+                }
+            });
+        }
+
+        // Producers
+        std::vector<std::thread> producersT;
+        for (int p = 0; p < producers; ++p)
+        {
+            producersT.emplace_back([p, perProducer, &q]() 
+            {
+                int base = p * perProducer;
+                for (int i = 0; i < perProducer; ++i)
+                    q.Push(base + i);
+            });
+        }
+
+        for (auto& t : producersT) t.join();
+
+        // All producers done; wake consumers to finish after queue empties
+        q.Close();
+
+        for (auto& t : consumers) t.join();
+
+        ASSERT_IF_NOT_EQUAL(poppedCount.load(), total);
+
+        // verify sum of pushed values
+        long long expectedSum = 0;
+        for (int p = 0; p < producers; ++p)
+        {
+            int base = p * perProducer;
+            for (int i = 0; i < perProducer; ++i)
+                expectedSum += (base + i);
+        }
+
+        ASSERT_IF_NOT_EQUAL(sum.load(), expectedSum);
+
+        std::cout << "Multiple producers and consumers test complete!\n";
     }
 
     /// <summary>
@@ -326,6 +452,10 @@ namespace MemoryAllocator
 
         TQueueUTSequentialPushPop();
         TQueueUTTwoThreads();
+        TQueueUTPushTryPop();
+        TQueueUTWaitAndPopBlocksAndReceives();
+        TQueueUTCloseUnblocksWaiter();
+        TQueueUTMultipleProducersConsumers();
 
         std::cout << "TQueue unit tests completed!\n";
     }
