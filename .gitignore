@@ -1,32 +1,98 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+# ==========================================
+# Compiled Object Files & Prerequisites
+# ==========================================
 *.o
 *.obj
+*.co
+*.d
+*.slo
+*.lo
 
+# ==========================================
 # Precompiled Headers
+# ==========================================
 *.gch
 *.pch
 
-# Compiled Dynamic libraries
+# ==========================================
+# Libraries & Binaries (Executables)
+# ==========================================
+# Libraries
+*.lib
+*.a
+*.la
+*.lai
+
+# Shared libraries / Dynamic Link Libraries
+*.dll
 *.so
 *.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
 
 # Executables
 *.exe
 *.out
 *.app
+*.elf
+
+# ==========================================
+# Debugger & Linker Files
+# ==========================================
+*.ilk
+*.pdb
+*.exp
+*.map
+
+# ==========================================
+# Build Directories (Standard Conventions)
+# ==========================================
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+out/
+
+# ==========================================
+# CMake Build System
+# ==========================================
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# ==========================================
+# IDEs and Editors Configurations
+# ==========================================
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln.docstates
+
+# CLion / IntelliJ
+.idea/
+cmake-build-*/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcuserstate
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+.DS_Store
+Thumbs.db
+
+x64/

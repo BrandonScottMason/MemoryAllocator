@@ -1,5 +1,0 @@
-﻿  MemoryAllocator.cpp
-C:\C++Projects\MemoryAllocator\MemoryAllocator\MemoryAllocator.cpp(51,24): warning C4101: 'block': unreferenced local variable
-  SQueue.cpp
-  Generating Code...
-  MemoryAllocator.vcxproj -> C:\C++Projects\MemoryAllocator\x64\Debug\MemoryAllocator.exe
