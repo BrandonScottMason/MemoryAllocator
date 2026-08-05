@@ -1,78 +1,67 @@
 #pragma once
+#include <memory>
 #include "Constants.hpp"
 #include "Macros.hpp"
 
 namespace MemoryAllocator
 {
     /// <summary>
-    /// Super fast version of a queue. NOT thread safe.
+    /// Circular Queue
     /// The S stands for simple.
     /// </summary>
     template <typename T>
     class SQueue
     {
     private:
-        T* m_buffer;
+        std::unique_ptr<T[]> m_buffer;
         size_t m_head;
         size_t m_tail;
         size_t m_capacity;
+        size_t m_size;
 
-        void enlargeOrShift()
+        void enlarge()
         {
-            size_t newCapacity;
-            if (Size() == m_capacity) // Need to enlarge
+            size_t newCapacity = (m_capacity == 0) ? DEFAULT_QUEUE_CAPACITY : (m_capacity * 2);
+            std::unique_ptr<T[]> newBuffer(new T[newCapacity]);
+
+            for (size_t i = 0; i < m_size; ++i)
             {
-                newCapacity = (m_capacity == 0) ? DEFAULT_QUEUE_CAPACITY : (m_capacity * 2);
-            }
-            else // Need to shift
-            {
-                newCapacity = (m_capacity == 0) ? DEFAULT_QUEUE_CAPACITY : m_capacity;
+                newBuffer[i] = std::move(m_buffer[(m_head + i) % m_capacity]);
             }
 
-            T* newBuffer = new T[newCapacity];
-
-            [[gsl::suppress("6386", justification: "Size() will always be < newCapacity here.")]]
-            for (size_t i = 0; i < Size(); ++i)
-            {
-                newBuffer[i] = m_buffer[i];
-            }
-
-            delete[] m_buffer;
-            m_buffer = newBuffer;
-
+            m_buffer = std::move(newBuffer);
             m_head = 0;
+            m_tail = m_size;
             m_capacity = newCapacity;
         }
     public:
         SQueue(SQueue<T>&) = delete;
-        SQueue(SQueue<T>&&) = delete;
-        SQueue& operator=(const SQueue&) = delete;
+        SQueue(SQueue<T>&&) = default;
+        SQueue& operator=(const SQueue&) = default;
 
-        explicit FORCE_INLINE SQueue() : m_capacity(0), m_head(0), m_tail(0)
+        explicit SQueue() : m_buffer(nullptr), m_capacity(0), m_head(0), m_tail(0)
         {
-            enlargeOrShift();
+            enlarge();
         }
 
-        ~SQueue()
-        {
-            delete[] m_buffer;
-        }
+        ~SQueue() = default;
 
-        FORCE_INLINE size_t Size() const { return m_tail - m_head; }
+        const size_t Size() const { return m_size; }
 
         /// <summary>
         /// Puts the item at the tail. This is where the buffer gets enlarged or shifted.
         /// </summary>
         /// <param name="item"></param>
-        FORCE_INLINE void Push(T item)
+        FORCE_INLINE void Push(const T& item)
         {
-            if (m_tail == m_capacity)
+            if (m_size == m_capacity)
             {
-                enlargeOrShift();
+                enlarge();
             }
 
             m_buffer[m_tail] = item;
-            m_tail++;
+            m_tail = (m_tail + 1) % m_capacity;
+            ++m_size;
         }
 
         /// <summary>
@@ -83,13 +72,8 @@ namespace MemoryAllocator
             if (IsEmpty())
                 return;
 
-            m_head++;
-
-            if (m_head == m_tail)
-            {
-                m_head = 0;
-                m_tail = 0;
-            }
+            m_head = (m_head + 1) % m_capacity;
+            --m_size;
         }
 
         /// <summary>
@@ -97,7 +81,7 @@ namespace MemoryAllocator
         /// Calling this on an empty queue causes undefined behavior!
         /// </summary>
         /// <returns>The next item to be popped.</returns>
-        FORCE_INLINE T& Front()
+        FORCE_INLINE const T& Front() const
         {
             return m_buffer[m_head];
         }
