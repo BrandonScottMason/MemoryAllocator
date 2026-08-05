@@ -141,13 +141,13 @@
   <ItemGroup>
     <ClCompile Include="FixedSizePoolAllocator.cpp" />
     <ClCompile Include="MemoryAllocator.cpp" />
-    <ClCompile Include="SQueue.cpp" />
-    <ClCompile Include="TQueue.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Constants.hpp" />
     <ClInclude Include="FixedSizePoolAllocator.hpp" />
     <ClInclude Include="Macros.hpp" />
+    <ClInclude Include="SQueue.hpp" />
+    <ClInclude Include="TQueue.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

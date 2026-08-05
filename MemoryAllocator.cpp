@@ -7,8 +7,8 @@
 #include <stdexcept>
 #include <thread>
 #include "FixedSizePoolAllocator.hpp"
-#include "TQueue.cpp"
-#include "SQueue.cpp"
+#include "TQueue.hpp"
+#include "SQueue.hpp"
 
 namespace MemoryAllocator
 {

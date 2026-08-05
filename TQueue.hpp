@@ -3,7 +3,7 @@
 #include <mutex>
 #include "Constants.hpp"
 #include "Macros.hpp"
-#include "SQueue.cpp"
+#include "SQueue.hpp"
 
 namespace MemoryAllocator
 {
