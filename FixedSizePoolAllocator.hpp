@@ -2,8 +2,6 @@
 
 #include <condition_variable>
 #include <cstddef>
-#include <cstdint>
-#include <new>
 #include <mutex>
 
 namespace MemoryAllocator {
@@ -17,10 +15,10 @@ namespace MemoryAllocator {
     private:
         struct FreeListNode
         {
-            FreeListNode* next;
+            FreeListNode* next = nullptr;
         };
         FreeListNode* m_freeListHead = nullptr;
-        std::byte* m_memory = nullptr;
+        std::unique_ptr<std::byte[]> m_pool = nullptr;
         std::size_t m_blockSize = 0;
         std::size_t m_memorySize = 0;
         std::mutex m_mutex;
@@ -44,14 +42,14 @@ namespace MemoryAllocator {
         /// <param name="blockCount">How many blocks we want to allocate.</param>
         explicit FixedSizePoolAllocator(std::size_t blockSize, std::size_t blockCount);
 
-        ~FixedSizePoolAllocator() { delete[] m_memory; }
+        ~FixedSizePoolAllocator() = default;
 
         /// <summary>
         /// Allocates a single block.
         /// </summary>
         /// <param name="threaded">Indicates if being invoked from a thread.</param>
         /// <returns>The allocated block.</returns>
-        void* allocateBlock(bool threaded = false);
+        void* allocateBlock();
 
         /// <summary>
         /// Deallocates a single block
@@ -59,7 +57,7 @@ namespace MemoryAllocator {
         /// <param name="block">The block of data to deallocate.</param>
         /// <param name="threaded">Indicates if being invoked from a thread.</param>
         /// <returns>Success(true) or failure(false).</returns>
-        bool deallocateBlock(void* block, bool threaded = false);
+        bool deallocateBlock(void* block);
     };
 }   
 

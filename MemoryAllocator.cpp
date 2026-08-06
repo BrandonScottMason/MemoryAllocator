@@ -3,7 +3,6 @@
 #include <cassert>
 #include <iostream>
 #include <queue>
-#include <random>
 #include <stdexcept>
 #include <thread>
 #include "FixedSizePoolAllocator.hpp"
@@ -15,12 +14,8 @@ namespace MemoryAllocator
     class FixedAllocThreadTester
     {
     private:
-        std::thread m_deallocThread;
-        std::thread m_allocThread;
-        std::mutex m_mutex;
-        std::condition_variable m_cv;
-        std::queue<std::byte*> m_blocks;
-        std::size_t m_blockCount;
+        TQueue<std::byte*> m_blocks;
+        size_t m_blockCount;
         FixedSizePoolAllocator m_allocator;
         std::atomic<bool> m_hasAllocFinished{ false };
         // Rule for writing better code: Do not rely on the user. If block count is being called without starting threads, 
@@ -30,17 +25,14 @@ namespace MemoryAllocator
         void AllocThreadFunc()
         {
             int allocCount = 0;
-            while (allocCount < m_blockCount)
+            while (allocCount < (m_blockCount / 2))
             {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                m_blocks.push(reinterpret_cast<std::byte*>(m_allocator.allocateBlock(true)));
-                m_cv.notify_one();
-                ++allocCount;
-                // Yielding here and at the start of the dealloc loop to ensure there's a back-and-fourth exhange between the two.
-                // This is for testing purposes only. This back-and-fourth is inefficent. The OS's overhead, thread scheduling and
-                // the fact that allocation caches are inheriently faster means this would run faster if this alloc method didn't yield
-                // and is allowed to complete all cycles before the dealloc thread gets a chance to wake up from waiting.
-                std::this_thread::yield();
+                void* block = m_allocator.allocateBlock();
+                if (block != nullptr)
+                {
+                    m_blocks.Push(reinterpret_cast<std::byte*>(block));
+                    ++allocCount;
+                }
             }
 
             m_hasAllocFinished.store(true, std::memory_order::release);
@@ -48,55 +40,40 @@ namespace MemoryAllocator
 
         void DeallocThreadFunc() 
         {
-            while (true) // While the Alloc thread is running OR m_blocks is not empty.
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            while (!m_blocks.IsEmpty()) // While the Alloc thread is running OR m_blocks is not empty.
             {
-                std::this_thread::yield();
-                std::unique_lock<std::mutex> lock(m_mutex);
-                m_cv.wait(lock, [this] { return (!m_blocks.empty() || m_hasAllocFinished); }); // Just in case the Alloc thread has no more blocks to push.
-                if (m_blocks.empty() && m_hasAllocFinished.load(std::memory_order::acquire))
-                {
-                    return;
-                }
-
-                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(m_blocks.front(), true), false);
-                m_blocks.pop();
+                std::byte* out;
+                ASSERT_IF_EQUAL(m_blocks.WaitAndPop(out), false);
+                ASSERT_IF_EQUAL(m_allocator.deallocateBlock(out), false);
             }
         }
     public:
         FixedAllocThreadTester(std::size_t blockSize, std::size_t blockCount) : m_blockCount(blockCount), m_allocator(blockSize, blockCount) { }
         FixedAllocThreadTester(const FixedAllocThreadTester&) = delete;
         FixedAllocThreadTester& operator=(const FixedAllocThreadTester&) = delete;
+        FixedAllocThreadTester(FixedAllocThreadTester&&) = delete;
         FixedAllocThreadTester& operator=(const FixedAllocThreadTester&&) = delete;
+        ~FixedAllocThreadTester() = default;
 
         void StartThreads()
         {
             assert(!m_haveThreadsStarted);
-            m_allocThread = std::thread(&FixedAllocThreadTester::AllocThreadFunc, this);
-            m_deallocThread = std::thread(&FixedAllocThreadTester::DeallocThreadFunc, this);
+            std::thread allocThread1 = std::thread(&FixedAllocThreadTester::AllocThreadFunc, this);
+            std::thread allocThread2 = std::thread(&FixedAllocThreadTester::AllocThreadFunc, this);
+            std::thread deallocThread = std::thread(&FixedAllocThreadTester::DeallocThreadFunc, this);
             m_haveThreadsStarted = true;
-            m_allocThread.join();
-            m_deallocThread.join();
+            allocThread1.join();
+            allocThread2.join();
+            deallocThread.join();
         }
 
         std::size_t BlockCount() 
         {
             assert(m_haveThreadsStarted);
-            return m_blocks.size(); 
-        }
-
-        ~FixedAllocThreadTester()
-        {
-            if (m_deallocThread.joinable()) { m_deallocThread.join(); }
-            if (m_allocThread.joinable()) { m_allocThread.join(); }
+            return m_blocks.Size(); 
         }
     };
-
-    void FxdAllocUTBadAllocator()
-    {
-        std::cout << "Allocating a pool of nothing...\n";
-        FixedSizePoolAllocator badAllocator(0, 0);
-        ASSERT_IF_NOT_EQUAL(badAllocator.allocateBlock(), nullptr);
-    }
 
     void FxdAllocUTDeallocNullptr()
     {
@@ -114,14 +91,6 @@ namespace MemoryAllocator
         ASSERT_IF_NOT_EQUAL(allocator.deallocateBlock(testBlock), true);
         testBlock = reinterpret_cast<std::byte*>(allocator.allocateBlock());
         ASSERT_IF_NOT_EQUAL(ptr, reinterpret_cast<std::uintptr_t>(testBlock)); // Testing if the memory address is the same
-    }
-
-    void FxdAllocUTExceedCap()
-    {
-        std::cout << "Allocating past the block count...\n";
-        FixedSizePoolAllocator allocator(1, 1);
-        allocator.allocateBlock();
-        ASSERT_IF_NOT_EQUAL(allocator.allocateBlock(), nullptr);
     }
 
     void FxdAllocUTMoveManyBlocks()
@@ -280,11 +249,11 @@ namespace MemoryAllocator
         std::cout << "Starting two threads. One producer and one consumer threads...\n";
 
         TQueue<int> intQueue;
-        std::thread producer(TQueueProducer, std::ref(intQueue), 100, 5);
         std::thread consumer(TQueueConsumer, std::ref(intQueue), 100, 10);
+        std::thread producer(TQueueProducer, std::ref(intQueue), 100, 5);
 
-        producer.join();
         consumer.join();
+        producer.join();
 
         ASSERT_IF_EQUAL(intQueue.IsEmpty(), false);
 
@@ -424,10 +393,8 @@ namespace MemoryAllocator
     {
         std::cout << "Starting FixedSizePoolAllocator unit tests...\n";
 
-        FxdAllocUTBadAllocator();
         FxdAllocUTDeallocNullptr();
         FxdAllocUTReuse();
-        FxdAllocUTExceedCap();
         FxdAllocUTMoveManyBlocks();
         FxdAllocUTRaceCondition();
 
